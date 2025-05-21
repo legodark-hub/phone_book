@@ -1,28 +1,29 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from typing import Optional
 
-from redis import asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from config import REDIS_URL
 from api.phone_book import router
+from config import REDIS_URL
+from repositories.contact_repository import ContactRepository
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Проверяет подключение к Redis.
+    Управляет подключением к Redis через репозиторий.
+
     """
-    redis_client = aioredis.from_url(REDIS_URL)
+    app.state.contact_repository = ContactRepository(REDIS_URL)
     try:
-        await redis_client.ping()
-        print("Успешное подключение к Redis")
+        if await app.state.contact_repository._check_redis_connection():
+            print("Успешное подключение к Redis через репозиторий")
+        else:
+            print("Не удалось подключиться к Redis через репозиторий.")
     except RedisConnectionError as e:
         print(f"Ошибка подключения к Redis: {e}")
-        redis_client = None
     yield
-    if redis_client:
-        await redis_client.close()
+    if hasattr(app.state, 'contact_repository') and app.state.contact_repository:
+        await app.state.contact_repository.close()
         print("Соединение с Redis закрыто.")
 
 
